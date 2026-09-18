@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<products xmlns:g="https://example.com/google-product-feed">
+  <product>
+    <sku>SHOE-001-BLK-42</sku>
+    <name>Example Running Shoe</name>
+    <description>Lightweight running shoe.</description>
+    <short_description>Breathable running shoe</short_description>
+    <price>899.00</price>
+    <stock>12</stock>
+    <brand>Example Brand</brand>
+    <attributes>
+      <color>Black</color>
+      <size>42</size>
+    </attributes>
+    <variants>
+      <variant>
+        <sku>SHOE-001-BLK-41</sku>
+        <price>899.00</price>
+        <stock>5</stock>
+        <attributes><color>Black</color><size>41</size></attributes>
+      </variant>
+      <variant>
+        <sku>SHOE-001-BLK-42</sku>
+        <price>899.00</price>
+        <stock>12</stock>
+        <attributes><color>Black</color><size>42</size></attributes>
+      </variant>
+    </variants>
+  </product>
+  <product>
+    <sku>TSHIRT-001-WHT-M</sku>
+    <name>Example Cotton T-Shirt</name>
+    <description>100% cotton T-shirt.</description>
+    <price>249.00</price>
+    <stock>30</stock>
+    <attributes><color>White</color><size>M</size></attributes>
+    <g:external_id>supplier-1002</g:external_id>
+  </product>
+</products>
