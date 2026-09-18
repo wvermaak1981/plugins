@@ -1,56 +1,75 @@
-# WooCommerce XML Feed Importer
+# WooCommerce XML Feed Importer 3.1
 
-## Structure
+The plugin imports simple and variable WooCommerce products from scheduled XML feeds. Each feed is configured independently under **WooCommerce → XML Feed Importer**.
 
-- `woocommerce-xml-feed-importer.php` - plugin bootstrap.
-- `includes/class-wpfi-plugin.php` - service wiring and lifecycle.
-- `includes/class-wpfi-feed-repository.php` - feed persistence.
-- `includes/class-wpfi-scheduler.php` - WP-Cron schedules.
-- `includes/class-wpfi-importer.php` - XML parsing and WooCommerce writes.
-- `includes/class-wpfi-admin.php` - feed table, editor, actions, and log viewer.
-- `includes/class-wpfi-logger.php` - persistent import logs and WooCommerce logger integration.
-- `examples/supplier-feed.xml` - sample simple and variable-product XML.
+## Customizable XML fields
 
-## Feed editor format
+The feed editor accepts one mapping per line in the form:
 
-Mappings, attributes, and namespace registrations use one entry per line:
+```text
+WooCommerce field=XML selector
+```
+
+Example:
 
 ```text
 name=name
 sku=sku
+description=description
+short_description=short_description
 price=price
+sale_price=sale_price
 stock_quantity=stock
+stock_status=stock_status
+image=image_url
+category=category
 ```
+
+Selectors can be simple child names (`name`), nested dot paths (`offer.price`), or XPath expressions (`offers/offer[1]/price`). The same mappings are used for product and variation nodes, so supplier field names remain fully configurable without changing PHP code.
+
+## Variable products
+
+Set **Variation XPath** to a path relative to the product node, for example:
+
+```text
+variants/variant
+```
+
+Add attribute mappings using the format:
 
 ```text
 Color=attributes/color
 Size=attributes/size
 ```
 
+The importer will:
+
+- create or update the parent as a variable product;
+- create or update variations using the configured variation identifier, normally `sku`;
+- apply price, sale price, stock, image, and custom attribute values to variations;
+- create product attribute taxonomies using `pa_` slugs.
+
+A feed without a Variation XPath is imported as simple products.
+
+## XML namespaces
+
+Register namespace prefixes as:
+
 ```text
 g=https://example.com/google-product-feed
 ```
 
-Use the registered namespace prefix in XPath expressions, for example `//g:item` or `g:title`.
+Then use the prefix in the product XPath or mapping selector, for example `//g:item` or `g:title`.
 
-## Variable products
+## Included sample
 
-Set `Variation XPath` to a path relative to each product, such as `variants/variant`. Add attribute mappings such as `Color=attributes/color` and `Size=attributes/size`. The importer creates or updates the parent product and its WooCommerce variations using the variation SKU.
-
-## Example configuration for the included XML
+See `examples/supplier-feed.xml`. Suggested configuration for that file:
 
 - Product XPath: `/products/product`
 - Variation XPath: `variants/variant`
-- Product mappings:
-  - `name=name`
-  - `sku=sku`
-  - `description=description`
-  - `price=price`
-  - `stock_quantity=stock`
-- Attributes:
-  - `Color=attributes/color`
-  - `Size=attributes/size`
-- Namespace:
-  - `g=https://example.com/google-product-feed`
+- Mappings: `name=name`, `sku=sku`, `price=price`, `description=description`, `stock_quantity=stock`
+- Attributes: `Color=attributes/color`, `Size=attributes/size`
 
-The plugin uses WP-Cron. For reliable production scheduling, configure a real server cron to call `wp-cron.php` or use WP-CLI cron events.
+## Scheduling and logs
+
+Feeds run through WP-Cron. The feed table provides **Run now**, **Edit**, and **Delete** actions. Import results and errors are available under **View import logs** and are also sent to the WooCommerce logger.
