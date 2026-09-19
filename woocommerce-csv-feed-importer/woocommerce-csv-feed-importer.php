@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce CSV Product Feed Importer
  * Description: Imports WooCommerce products from CSV feeds using ProductName, ProductCode, Category, ProductSummary, Price, AvailableQty and Image columns.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -60,13 +60,36 @@ final class WC_CSV_Product_Feed_Importer {
     }
 
     private function render_preview($token) {
-        $rows = get_transient($this->preview_key($token));
-        if (!is_array($rows) || !$rows) {
+        $payload = get_transient($this->preview_key($token));
+        if (!is_array($payload) || empty($payload['rows'])) {
             echo '<div class="notice notice-error"><p>This preview has expired. Please upload or fetch the CSV again.</p></div>';
             return;
         }
+
+        $rows = $payload['rows'];
+        $summary = $payload['summary'];
         $shown = min(count($rows), $this->preview_limit);
-        echo '<h2>Import Preview</h2><p>Reviewing ' . esc_html($shown) . ' of ' . esc_html(count($rows)) . ' row(s). No products have been saved yet.</p>';
+
+        echo '<h2>Import Preview</h2>';
+        echo '<p>Reviewing ' . esc_html($shown) . ' of ' . esc_html(count($rows)) . ' row(s). No products have been saved yet.</p>';
+
+        echo '<div class="wc-csv-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0;">';
+        $stats = [
+            'Rows skipped' => $summary['skipped'] ?? 0,
+            'Duplicate SKUs' => $summary['duplicate_skus'] ?? 0,
+            'Invalid prices' => $summary['invalid_prices'] ?? 0,
+            'Missing image URLs' => $summary['missing_images'] ?? 0,
+            'Would create' => $summary['create_count'] ?? 0,
+            'Would update' => $summary['update_count'] ?? 0,
+        ];
+        foreach ($stats as $label => $value) {
+            echo '<div style="background:#fff;border:1px solid #dcdcde;padding:12px;border-radius:4px;">';
+            echo '<div style="font-size:11px;text-transform:uppercase;color:#50575e;">' . esc_html($label) . '</div>';
+            echo '<div style="font-size:28px;font-weight:700;line-height:1.2;margin-top:6px;">' . esc_html((string) $value) . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+
         echo '<table class="widefat striped"><thead><tr><th>#</th><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Quantity</th><th>Image</th></tr></thead><tbody>';
         foreach (array_slice($rows, 0, $this->preview_limit) as $index => $row) {
             echo '<tr><td>' . esc_html($index + 1) . '</td><td>' . esc_html($row['name'] ?? '') . '</td><td>' . esc_html($row['sku'] ?? '') . '</td><td>' . esc_html($row['category'] ?? '') . '</td><td>' . esc_html($this->decimal($row['price'] ?? '')) . '</td><td>' . esc_html($row['stock'] ?? '') . '</td><td>' . ($this->valid_image_url($row['image'] ?? '') ? 'Yes' : 'No') . '</td></tr>';
@@ -101,8 +124,10 @@ final class WC_CSV_Product_Feed_Importer {
             }
         }
         if (!$rows) { $this->redirect(['notice' => 'error']); }
+
+        $summary = $this->dry_run_summary($rows);
         $token = wp_generate_password(32, false, false);
-        set_transient($this->preview_key($token), $rows, HOUR_IN_SECONDS);
+        set_transient($this->preview_key($token), ['rows' => $rows, 'summary' => $summary], HOUR_IN_SECONDS);
         $this->redirect(['preview' => $token]);
     }
 
@@ -112,10 +137,10 @@ final class WC_CSV_Product_Feed_Importer {
         if (!$token) { wp_die('Missing preview token.'); }
         check_admin_referer('wc_csv_product_feed_confirm_' . $token);
         $key = $this->preview_key($token);
-        $rows = get_transient($key);
+        $payload = get_transient($key);
         delete_transient($key);
-        if (!is_array($rows) || !$rows) { $this->redirect(['notice' => 'error']); }
-        $result = $this->import_rows($rows);
+        if (!is_array($payload) || empty($payload['rows'])) { $this->redirect(['notice' => 'error']); }
+        $result = $this->import_rows($payload['rows']);
         $this->redirect(['notice' => $result['failed'] ? 'partial' : 'success', 'imported' => $result['imported']]);
     }
 
@@ -124,6 +149,60 @@ final class WC_CSV_Product_Feed_Importer {
     private function redirect($args) {
         wp_safe_redirect(add_query_arg(array_merge(['page' => 'wc-csv-feed-importer'], $args), admin_url('admin.php')));
         exit;
+    }
+
+    private function dry_run_summary($rows) {
+        $summary = [
+            'total_rows' => count($rows),
+            'skipped' => 0,
+            'duplicate_skus' => 0,
+            'invalid_prices' => 0,
+            'missing_images' => 0,
+            'create_count' => 0,
+            'update_count' => 0,
+            'valid_rows' => 0,
+        ];
+
+        $seen_skus = [];
+        foreach ($rows as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $price = trim((string) ($row['price'] ?? ''));
+            $image = trim((string) ($row['image'] ?? ''));
+
+            if ('' === $name) {
+                $summary['skipped']++;
+                continue;
+            }
+
+            if ('' !== $sku && in_array(strtolower($sku), $seen_skus, true)) {
+                $summary['duplicate_skus']++;
+                continue;
+            }
+            if ('' !== $sku) {
+                $seen_skus[] = strtolower($sku);
+            }
+
+            if ($price !== '' && '' === $this->decimal($price)) {
+                $summary['invalid_prices']++;
+                continue;
+            }
+
+            if ('' === $image || !$this->valid_image_url($image)) {
+                $summary['missing_images']++;
+            }
+
+            $existing = ('' !== $sku) ? wc_get_product_id_by_sku($sku) : 0;
+            if ($existing) {
+                $summary['update_count']++;
+            } else {
+                $summary['create_count']++;
+            }
+
+            $summary['valid_rows']++;
+        }
+
+        return $summary;
     }
 
     private function read_csv($path) {
@@ -178,9 +257,10 @@ final class WC_CSV_Product_Feed_Importer {
         return true;
     }
 
-    private function valid_image_url($url) { return (bool) filter_var($url, FILTER_VALIDATE_URL); }
+    private function valid_image_url($url) { return is_string($url) && $url !== '' && (bool) filter_var($url, FILTER_VALIDATE_URL); }
     private function import_image($url, $product_id) { require_once ABSPATH . 'wp-admin/includes/media.php'; require_once ABSPATH . 'wp-admin/includes/file.php'; require_once ABSPATH . 'wp-admin/includes/image.php'; $id = media_sideload_image(esc_url_raw($url), $product_id, null, 'id'); return is_wp_error($id) ? 0 : (int) $id; }
     private function decimal($value) { $value = preg_replace('/[^0-9.\-]/', '', str_replace(',', '', (string) $value)); return ('' === $value || '-' === $value || '.' === $value) ? '' : number_format((float) $value, 2, '.', ''); }
 }
 
 add_action('plugins_loaded', static function () { if (class_exists('WooCommerce')) { WC_CSV_Product_Feed_Importer::instance(); } });
+
