@@ -1,30 +1,3 @@
 <?php
 if (!defined('ABSPATH')) exit;
-
-final class WPFI_Scheduler {
-    const HOOK = 'wpfi_import_feed';
-    private $repo;
-    private $importer;
-
-    public function __construct($repo, $importer) {
-        $this->repo = $repo; $this->importer = $importer;
-        add_filter('cron_schedules', [$this, 'schedules']);
-        add_action(self::HOOK, [$this, 'run'], 10, 1);
-    }
-    public function schedules($schedules) {
-        $schedules['wpfi_15m'] = ['interval'=>900, 'display'=>__('Every 15 minutes','wpfi')];
-        $schedules['wpfi_30m'] = ['interval'=>1800, 'display'=>__('Every 30 minutes','wpfi')];
-        $schedules['wpfi_6h'] = ['interval'=>21600, 'display'=>__('Every 6 hours','wpfi')];
-        return $schedules;
-    }
-    public function clear() { foreach ($this->repo->all() as $feed) wp_clear_scheduled_hook(self::HOOK, [$feed['id'] ?? '']); }
-    public function sync() {
-        $this->clear();
-        foreach ($this->repo->all() as $feed) {
-            if (!empty($feed['enabled']) && !empty($feed['url']) && !empty($feed['id']) && wp_get_schedules()[$feed['frequency'] ?? 'daily'] ?? false) {
-                wp_schedule_event(time() + 120, $feed['frequency'], self::HOOK, [$feed['id']]);
-            }
-        }
-    }
-    public function run($id) { $feed = $this->repo->get($id); if ($feed && !empty($feed['enabled'])) $this->importer->import($feed); }
-}
+final class WPFI_Scheduler {const HOOK='wpfi_import_feed';private $repo,$importer;public function __construct($r,$i){$this->repo=$r;$this->importer=$i;add_filter('cron_schedules',[$this,'schedules']);add_action(self::HOOK,[$this,'run'],10,1);}public function schedules($s){$s['wpfi_15m']=['interval'=>900,'display'=>'Every 15 minutes'];$s['wpfi_30m']=['interval'=>1800,'display'=>'Every 30 minutes'];$s['wpfi_6h']=['interval'=>21600,'display'=>'Every 6 hours'];return $s;}public function clear(){foreach($this->repo->all() as $f)wp_clear_scheduled_hook(self::HOOK,[$f['id']??'']);}public function sync(){$this->clear();$s=wp_get_schedules();foreach($this->repo->all() as $f){$freq=$f['frequency']??'daily';if(!empty($f['enabled'])&&!empty($f['url'])&&!empty($f['id'])&&isset($s[$freq]))wp_schedule_event(time()+120,$freq,self::HOOK,[$f['id']]);}}public function run($id){$f=$this->repo->get($id);if($f&&!empty($f['enabled']))$this->importer->import($f);}}
