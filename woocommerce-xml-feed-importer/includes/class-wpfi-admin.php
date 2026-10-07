@@ -13,6 +13,7 @@ final class WPFI_Admin {
  }
  public function menu(){
   add_submenu_page('woocommerce','XML Feed Importer','XML Feed Importer','manage_woocommerce','wpfi-feeds',[$this,'page']);
+  add_submenu_page('woocommerce','XML Feed Importer Logs','XML Feed Importer Logs','manage_woocommerce','wpfi-logs',[$this,'logs_page']);
  }
  private function can(){
   return current_user_can('manage_woocommerce');
@@ -37,10 +38,61 @@ final class WPFI_Admin {
   if($action==='edit'||$action==='new')$this->edit();
   else $this->list();
  }
+ public function logs_page(){
+  if(!$this->can())return;
+  $this->log("Log viewer accessed");
+  $log_file=WP_CONTENT_DIR.'/wpfi-admin.log';
+  $level=(isset($_GET['level'])?sanitize_key($_GET['level']):'all');
+  $search=(isset($_GET['q'])?sanitize_text_field(wp_unslash($_GET['q'])):'');
+  $clear=(isset($_GET['clear']) && $_GET['clear']==='1');
+  if($clear){
+   if(file_exists($log_file)){@unlink($log_file);} 
+   $this->log('Log file cleared by admin', 'warning');
+   echo '<div class="wrap"><h1>XML Feed Importer Logs</h1><p>Log file cleared.</p><p><a href="'.esc_url(admin_url('admin.php?page=wpfi-logs')).'">Return to logs</a></p></div>';
+   return;
+  }
+  $lines=[];
+  if(file_exists($log_file)){
+   $contents=file($log_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+   if(is_array($contents)){
+    $lines=array_reverse($contents);
+   }
+  }
+  $filtered=[];
+  foreach($lines as $line){
+   $match=true;
+   if($level!=='all' && stripos($line,'['.$level.']')===false){$match=false;}
+   if($match && $search!=='' && stripos($line,$search)===false){$match=false;}
+   if($match)$filtered[]=$line;
+  }
+  echo '<div class="wrap"><h1>XML Feed Importer Logs</h1>';
+  echo '<form method="get" action="'.esc_url(admin_url('admin.php')).'">';
+  echo '<input type="hidden" name="page" value="wpfi-logs">';
+  echo '<select name="level"><option value="all" '.selected($level,'all',false).'>All</option><option value="info" '.selected($level,'info',false).'>Info</option><option value="warning" '.selected($level,'warning',false).'>Warning</option><option value="error" '.selected($level,'error',false).'>Error</option></select>';
+  echo ' <input type="search" name="q" value="'.esc_attr($search).'" placeholder="Search logs...">';
+  echo ' <input type="submit" class="button" value="Filter">';
+  echo ' <a class="button" href="'.esc_url(admin_url('admin.php?page=wpfi-logs&clear=1')).'" onclick="return confirm(\'Clear log file?\')">Clear Logs</a>';
+  echo '</form>';
+  echo '<pre style="background:#fff;border:1px solid #ddd;padding:12px;max-height:700px;overflow:auto;white-space:pre-wrap;word-break:break-word;">';
+  if(empty($filtered)){
+   echo 'No log entries found.';
+  }else{
+   $count=0;
+   foreach(array_slice($filtered,0,200) as $line){
+    $count++;
+    $color='inherit';
+    if(stripos($line,'[error]')!==false)$color='#b00020';
+    elseif(stripos($line,'[warning]')!==false)$color='#b7791f';
+    elseif(stripos($line,'[info]')!==false)$color='#0050b3';
+    echo '<div style="color:'.esc_attr($color).';">'.esc_html($count.'. '.$line).'</div>';
+   }
+  }
+  echo '</pre></div>';
+ }
  private function list(){
   echo '<div class="wrap">';
   echo '<h1>XML Feed Importer</h1>';
-  echo '<p><a class="button button-primary" href="'.esc_url($this->url(['action'=>'new'])).'">Add Feed</a></p>';
+  echo '<p><a class="button button-primary" href="'.esc_url($this->url(['action'=>'new'])).'">Add Feed</a> <a class="button" href="'.esc_url(admin_url('admin.php?page=wpfi-logs')).'">View Logs</a></p>';
   echo '<table class="widefat striped"><thead><tr><th>Feed Name</th><th>URL</th><th>Status</th><th>Frequency</th><th>Actions</th></tr></thead><tbody>';
   $feeds=$this->repo->all();
   if(empty($feeds)){
