@@ -1,4 +1,4 @@
-# WooCommerce XML Feed Importer 3.2
+# WooCommerce XML Feed Importer 3.3
 
 The plugin imports simple and variable WooCommerce products from scheduled XML feeds. Each feed is configured independently under WooCommerce → XML Feed Importer.
 
@@ -35,6 +35,24 @@ The importer will append these as:
 /id/11305/uid/bf672543-bc4c-40a9-a8c6-0ac6259bb4de/
 ```
 
+## Pinnacle Product Mappings
+
+For Pinnacle feeds, use these field mappings:
+
+```text
+name=ProdName
+sku=StockCode
+description=TopCat
+short_description=TopCat
+price=ProdPriceExclVAT
+stock_quantity=ProdQty
+stock_status=ProdQty
+image=ProdImg
+category=category_tree
+```
+
+The plugin automatically skips items with `ProdQty=0` to exclude out-of-stock products.
+
 ## Customizable XML fields
 
 The feed editor accepts one mapping per line in the form:
@@ -59,6 +77,14 @@ category=category
 ```
 
 Selectors can be simple child names (`name`), nested dot paths (`offer.price`), or XPath expressions (`offers/offer[1]/price`). The same mappings are used for product and variation nodes, so supplied selectors must work on both.
+
+## Skip zero stock items
+
+Enable **Skip zero stock items** in the feed settings to automatically exclude products where the stock quantity is 0 or less. This is useful for feeds like Pinnacle where out-of-stock items should not be imported.
+
+- Field to check: `stock_quantity` (by default, mapped to `ProdQty` for Pinnacle)
+- Items with `stock_quantity <= 0` will be logged and skipped
+- Import log will show count of skipped items
 
 ## Variable products
 
@@ -105,4 +131,4 @@ See `examples/supplier-feed.xml`. Suggested configuration for that file:
 
 ## Scheduling and logs
 
-Feeds run through WP-Cron. The feed table provides Run now, Edit, and Delete actions. Import results and errors are available under View import logs and are also sent to the WooCommerce error log.
+Feeds run through WP-Cron. The feed table provides **Run now**, **Edit**, and **Delete** actions. Import results and errors are available under **View import logs** and are also sent to the WooCommerce error log.
