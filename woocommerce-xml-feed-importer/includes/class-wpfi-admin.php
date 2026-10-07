@@ -20,9 +20,20 @@ final class WPFI_Admin {
  private function url($a=[]){
   return add_query_arg(array_merge(['page'=>'wpfi-feeds'],$a),admin_url('admin.php'));
  }
+ private function log($message, $level='info', $context=[]){
+  $timestamp=date('Y-m-d H:i:s');
+  $user=wp_get_current_user();
+  $user_login=$user->user_login??'unknown';
+  $log_message="[$timestamp] [$level] [$user_login] $message";
+  if(!empty($context)){
+   $log_message.=" | Context: ".wp_json_encode($context);
+  }
+  error_log($log_message,3,WP_CONTENT_DIR.'/wpfi-admin.log');
+ }
  public function page(){
   if(!$this->can())return;
   $action=sanitize_key($_GET['action']??'list');
+  $this->log("Page accessed: $action");
   if($action==='edit'||$action==='new')$this->edit();
   else $this->list();
  }
@@ -52,6 +63,7 @@ final class WPFI_Admin {
   $id=sanitize_text_field($_GET['id']??'');
   $f=wp_parse_args($id?($this->repo->get($id)??[]):[],$this->repo->defaults());
   $a=$f['auth']??[];
+  $this->log("Feed edit form opened", 'info', ['feed_id'=>$id??'new']);
   echo '<div class="wrap">';
   echo '<h1>'.($id?'Edit':'Add').' XML Feed</h1>';
   echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" enctype="multipart/form-data">';
@@ -123,19 +135,25 @@ final class WPFI_Admin {
  }
  public function save(){
   try {
+   $this->log("Save feed initiated");
+   
    if(!$this->can()) {
+    $this->log("Permission denied on save", 'error');
     wp_die('Permission denied.');
    }
    
    if(!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'wpfi_save_feed')) {
+    $this->log("Nonce verification failed on save", 'error');
     wp_die('Security check failed.');
    }
    
    if(!isset($_POST['name']) || empty(trim($_POST['name']))) {
+    $this->log("Feed name missing on save", 'error');
     wp_die('Feed name is required.');
    }
    
    if(!isset($_POST['url']) || empty(trim($_POST['url']))) {
+    $this->log("Feed URL missing on save", 'error');
     wp_die('Feed URL is required.');
    }
 
@@ -144,6 +162,9 @@ final class WPFI_Admin {
    $f['id']=sanitize_text_field($_POST['id']??'');
    if(empty($f['id'])) {
     $f['id']=wp_generate_uuid4();
+    $this->log("New feed created with ID: ".$f['id']);
+   } else {
+    $this->log("Updating existing feed: ".$f['id']);
    }
    
    $f['name']=sanitize_text_field($_POST['name']??'');
@@ -160,6 +181,8 @@ final class WPFI_Admin {
    $f['enabled']=isset($_POST['enabled']) && $_POST['enabled']==='1'?1:0;
    $f['skip_zero_stock']=isset($_POST['skip_zero_stock']) && $_POST['skip_zero_stock']==='1'?1:0;
    
+   $this->log("Feed basic settings saved", 'info', ['feed'=>$f['name'], 'format'=>$f['format'], 'enabled'=>$f['enabled']]);
+   
    $auth=$f['auth']??[];
    $auth['type']=sanitize_key($_POST['auth']['type']??'none');
    $auth['api_key']=sanitize_text_field($_POST['auth']['api_key']??'');
@@ -173,6 +196,7 @@ final class WPFI_Admin {
    if(!empty($_POST['auth']['query_params'])) {
     $query_params=sanitize_textarea_field(wp_unslash($_POST['auth']['query_params']??''));
     $auth['query_params']=$this->parse_params($query_params);
+    $this->log("Query parameters set", 'info', ['count'=>count($auth['query_params'])]);
    } else {
     $auth['query_params']=[];
    }
@@ -180,56 +204,72 @@ final class WPFI_Admin {
    if(!empty($_POST['auth']['path_params'])) {
     $path_params=sanitize_textarea_field(wp_unslash($_POST['auth']['path_params']??''));
     $auth['path_params']=$this->parse_params($path_params);
+    $this->log("Path parameters set", 'info', ['count'=>count($auth['path_params']), 'keys'=>implode(',',array_keys($auth['path_params']))]);
    } else {
     $auth['path_params']=[];
    }
    
    $f['auth']=$auth;
+   $this->log("Authentication settings saved", 'info', ['type'=>$auth['type']]);
    
    if(!empty($_POST['map'])) {
     $map_raw=sanitize_textarea_field(wp_unslash($_POST['map']??''));
     $f['map']=$this->parse_map($map_raw);
+    $this->log("Field mappings saved", 'info', ['count'=>count($f['map']), 'fields'=>implode(',',array_keys($f['map']))]);
    } else {
     $f['map']=[];
    }
    
    $this->repo->save($f);
+   $this->log("Feed saved to repository", 'info', ['feed_id'=>$f['id']]);
    
    if(is_callable([$this->scheduler,'schedule'])) {
     $this->scheduler->schedule($f);
+    $this->log("Feed scheduled", 'info', ['frequency'=>$f['frequency']]);
    }
    
    wp_safe_redirect($this->url(['notice'=>'saved']));
    exit;
   } catch(Exception $e) {
-   wp_die('Error saving feed: '.esc_html($e->getMessage()));
+   $error_msg='Error saving feed: '.$e->getMessage();
+   $this->log($error_msg, 'error', ['exception'=>$e->getTraceAsString()]);
+   wp_die($error_msg);
   }
  }
  public function delete(){
   try {
    $id=sanitize_text_field($_GET['id']??'');
+   $this->log("Delete feed initiated", 'info', ['feed_id'=>$id]);
+   
    if(!$this->can()) {
+    $this->log("Permission denied on delete", 'error');
     wp_die('Permission denied.');
    }
    
    if(empty($id)) {
+    $this->log("Feed ID missing on delete", 'error');
     wp_die('Feed ID is required.');
    }
    
    if(!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'wpfi_delete_'.$id)) {
+    $this->log("Nonce verification failed on delete", 'error', ['feed_id'=>$id]);
     wp_die('Security check failed.');
    }
    
    $this->repo->delete($id);
+   $this->log("Feed deleted from repository", 'info', ['feed_id'=>$id]);
    
    if(is_callable([$this->scheduler,'unschedule'])) {
     $this->scheduler->unschedule($id);
+    $this->log("Feed unscheduled", 'info', ['feed_id'=>$id]);
    }
    
    wp_safe_redirect($this->url(['notice'=>'deleted']));
    exit;
   } catch(Exception $e) {
-   wp_die('Error deleting feed: '.esc_html($e->getMessage()));
+   $error_msg='Error deleting feed: '.$e->getMessage();
+   $this->log($error_msg, 'error', ['exception'=>$e->getTraceAsString()]);
+   wp_die($error_msg);
   }
  }
  private function format_params($params){
