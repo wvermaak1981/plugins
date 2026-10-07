@@ -1,6 +1,39 @@
-# WooCommerce XML Feed Importer 3.1
+# WooCommerce XML Feed Importer 3.2
 
-The plugin imports simple and variable WooCommerce products from scheduled XML feeds. Each feed is configured independently under **WooCommerce → XML Feed Importer**.
+The plugin imports simple and variable WooCommerce products from scheduled XML feeds. Each feed is configured independently under WooCommerce → XML Feed Importer.
+
+## Pinnacle-style XML feed parameters
+
+Some feeds do not send credentials in headers or query strings. They use URL path variables instead, for example:
+
+```text
+https://www.pinnacle.co.za/pinnacle/productfeed/xml/id/11305/uid/bf672543-bc4c-40a9-a8c6-0ac6259bb4de/
+```
+
+This format requires two path parameters:
+
+- id = 11305
+- uid = bf672543-bc4c-40a9-a8c6-0ac6259bb4de
+
+When registering the feed in the plugin, set the base URL to:
+
+```text
+https://www.pinnacle.co.za/pinnacle/productfeed/xml
+```
+
+And in the feed auth settings, add:
+
+```text
+path_params:
+  id = 11305
+  uid = bf672543-bc4c-40a9-a8c6-0ac6259bb4de
+```
+
+The importer will append these as:
+
+```text
+/id/11305/uid/bf672543-bc4c-40a9-a8c6-0ac6259bb4de/
+```
 
 ## Customizable XML fields
 
@@ -25,11 +58,11 @@ image=image_url
 category=category
 ```
 
-Selectors can be simple child names (`name`), nested dot paths (`offer.price`), or XPath expressions (`offers/offer[1]/price`). The same mappings are used for product and variation nodes, so supplier field names remain fully configurable without changing PHP code.
+Selectors can be simple child names (`name`), nested dot paths (`offer.price`), or XPath expressions (`offers/offer[1]/price`). The same mappings are used for product and variation nodes, so supplied selectors must work on both.
 
 ## Variable products
 
-Set **Variation XPath** to a path relative to the product node, for example:
+Set Variation XPath to a path relative to the product node, for example:
 
 ```text
 variants/variant
@@ -72,4 +105,4 @@ See `examples/supplier-feed.xml`. Suggested configuration for that file:
 
 ## Scheduling and logs
 
-Feeds run through WP-Cron. The feed table provides **Run now**, **Edit**, and **Delete** actions. Import results and errors are available under **View import logs** and are also sent to the WooCommerce logger.
+Feeds run through WP-Cron. The feed table provides Run now, Edit, and Delete actions. Import results and errors are available under View import logs and are also sent to the WooCommerce error log.
