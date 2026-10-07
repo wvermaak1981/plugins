@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: WooCommerce XML Feed Importer
- * Description: Scheduled XML product imports with configurable authentication, field mappings, namespaces, and variable products.
- * Version: 3.2.0
+ * Description: Scheduled XML product imports with configurable authentication, field mappings, namespaces, and variable products. Supports Pinnacle-style path parameters and zero-stock filtering.
+ * Version: 3.3.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  */
 if (!defined('ABSPATH')) exit;
-define('WPFI_VERSION','3.2.0');
+define('WPFI_VERSION','3.3.0');
 define('WPFI_FILE',__FILE__);
 define('WPFI_DIR',plugin_dir_path(__FILE__));
 require_once WPFI_DIR.'includes/class-wpfi-feed-repository.php';

@@ -120,15 +120,6 @@ g=https://example.com/google-product-feed
 
 Then use the prefix in the product XPath or mapping selector, for example `//g:item` or `g:title`.
 
-## Included sample
-
-See `examples/supplier-feed.xml`. Suggested configuration for that file:
-
-- Product XPath: `/products/product`
-- Variation XPath: `variants/variant`
-- Mappings: `name=name`, `sku=sku`, `price=price`, `description=description`, `stock_quantity=stock`
-- Attributes: `Color=attributes/color`, `Size=attributes/size`
-
 ## Scheduling and logs
 
 Feeds run through WP-Cron. The feed table provides **Run now**, **Edit**, and **Delete** actions. Import results and errors are available under **View import logs** and are also sent to the WooCommerce error log.
