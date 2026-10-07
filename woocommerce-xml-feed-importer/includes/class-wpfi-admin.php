@@ -2,17 +2,202 @@
 if (!defined('ABSPATH')) exit;
 final class WPFI_Admin {
  private $repo,$scheduler,$importer,$logger;
- public function __construct($r,$s,$i,$l){$this->repo=$r;$this->scheduler=$s;$this->importer=$i;$this->logger=$l;add_action('admin_menu',[$this,'menu']);add_action('admin_post_wpfi_save_feed',[$this,'save']);add_action('admin_post_wpfi_delete_feed',[$this,'delete']);}
- public function menu(){add_submenu_page('woocommerce','XML Feed Importer','XML Feed Importer','manage_woocommerce','wpfi-feeds',[$this,'page']);}
- private function can(){return current_user_can('manage_woocommerce');}
- private function url($a=[]){return add_query_arg(array_merge(['page'=>'wpfi-feeds'],$a),admin_url('admin.php'));}
- public function page(){if(!$this->can())return;$action=sanitize_key($_GET['action']??'list');if($action==='edit'||$action==='new')$this->edit();else $this->list();}
- private function list(){echo '<div class="wrap"><h1>XML Feed Importer</h1><p><a class="button button-primary" href="'.esc_url($this->url(['action'=>'new'])).'">Add feed</a></p><table class="widefat striped"><thead><tr><th>Feed</th><th>URL</th><th>Status</th><th>Frequency</th><th>Actions</th></tr></thead><tbody>';foreach($this->repo->all() as $f){echo '<tr><td><strong>'.esc_html($f['name']??'').'</strong><br><small>'.esc_html($f['id']).'</small></td><td><code>'.esc_html(substr($f['url']??'',0,50)).'...</code></td><td>'.($f['enabled']?'<span style="color:green">Enabled</span>':'<span style="color:red">Disabled</span>').'</td><td>'.esc_html($f['frequency']??'').'</td><td><a href="'.esc_url($this->url(['action'=>'edit','id'=>$f['id']])).'">Edit</a> | <a href="'.esc_url(wp_nonce_url($this->url(['action'=>'delete','id'=>$f['id']]),'wpfi_delete_'.$f['id'])).'">Delete</a></td></tr>';}echo '</tbody></table></div>';}
- private function edit(){$id=sanitize_text_field($_GET['id']??'');$f=wp_parse_args($id?$this->repo->get($id):[],$this->repo->defaults());$a=$f['auth']??[];echo '<div class="wrap"><h1>'.($id?'Edit':'Add').' Feed</h1><form method="post" action="'.esc_url(admin_url('admin-post.php')).'"><input type="hidden" name="action" value="wpfi_save_feed"><input type="hidden" name="id" value="'.esc_attr($id).'">';wp_nonce_field('wpfi_save_feed');echo '<table class="form-table"><tbody><tr><th><label for="name">Feed Name</label></th><td><input type="text" id="name" name="name" value="'.esc_attr($f['name']??'').'" class="regular-text" required></td></tr><tr><th><label for="url">Base URL</label></th><td><input type="url" id="url" name="url" value="'.esc_attr($f['url']??'').'" class="regular-text" required></td></tr><tr><th><label for="format">Format</label></th><td><select id="format" name="format"><option value="xml" '.selected($f['format']??'xml','xml').' >XML</option><option value="csv" '.selected($f['format']??'','csv').'>CSV</option></select></td></tr><tr><th><label for="product_xpath">Product XPath</label></th><td><input type="text" id="product_xpath" name="product_xpath" value="'.esc_attr($f['product_xpath']??'').'" class="regular-text" placeholder="/products/product"></td></tr><tr><th><label for="enabled">Enabled</label></th><td><input type="checkbox" id="enabled" name="enabled" value="1" '.checked($f['enabled']??1,1).'></td></tr></tbody></table>';echo '<h2>Authentication</h2><table class="form-table"><tbody><tr><th><label for="auth_type">Type</label></th><td><select id="auth_type" name="auth[type]"><option value="none" '.selected($a['type']??'none','none').'>None</option><option value="api_key" '.selected($a['type']??'','api_key').'>API Key</option><option value="basic" '.selected($a['type']??'','basic').'>Basic Auth</option><option value="bearer" '.selected($a['type']??'','bearer').'>Bearer Token</option><option value="custom" '.selected($a['type']??'','custom').'>Custom Header</option></select></td></tr><tr><th><label for="auth_api_key">API Key</label></th><td><input type="text" id="auth_api_key" name="auth[api_key]" value="'.esc_attr($a['api_key']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_api_key_name">API Key Header Name</label></th><td><input type="text" id="auth_api_key_name" name="auth[api_key_name]" value="'.esc_attr($a['api_key_name']??'X-API-Key').'" class="regular-text"></td></tr><tr><th><label for="auth_username">Username</label></th><td><input type="text" id="auth_username" name="auth[username]" value="'.esc_attr($a['username']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_password">Password</label></th><td><input type="password" id="auth_password" name="auth[password]" value="'.esc_attr($a['password']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_token">Token</label></th><td><input type="text" id="auth_token" name="auth[token]" value="'.esc_attr($a['token']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_header_name">Custom Header Name</label></th><td><input type="text" id="auth_header_name" name="auth[header_name]" value="'.esc_attr($a['header_name']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_header_value">Custom Header Value</label></th><td><input type="text" id="auth_header_value" name="auth[header_value]" value="'.esc_attr($a['header_value']??'').'" class="regular-text"></td></tr><tr><th><label for="auth_query_params">Query Parameters</label></th><td><textarea id="auth_query_params" name="auth[query_params]" rows="4" class="large-text code" placeholder="key1=value1&#10;key2=value2">'.esc_textarea($this->format_params($a['query_params']??[])).'</textarea><p class="description">One key=value pair per line for query string parameters</p></td></tr><tr><th><label for="auth_path_params">Path Parameters</label></th><td><textarea id="auth_path_params" name="auth[path_params]" rows="4" class="large-text code" placeholder="id=11305&#10;uid=bf672543-bc4c-40a9-a8c6-0ac6259bb4de">'.esc_textarea($this->format_params($a['path_params']??[])).'</textarea><p class="description">One key=value pair per line. For Pinnacle feeds:<br>id=11305<br>uid=bf672543-bc4c-40a9-a8c6-0ac6259bb4de</p></td></tr></tbody></table>';echo '<h2>Field Mappings</h2><table class="form-table"><tbody><tr><th><label for="map">Mappings</label></th><td><textarea id="map" name="map" rows="10" class="large-text code" placeholder="name=name&#10;sku=sku&#10;price=price">'.esc_textarea($this->format_map($f['map']??[])).'</textarea><p class="description">One mapping per line: WooCommerce_field=XML_selector<br>Example: name=ProdName<br>For Pinnacle: name=ProdName, sku=StockCode, price=ProdPriceExclVAT, stock_quantity=ProdQty</p></td></tr><tr><th><label for="skip_zero_stock">Skip Zero Stock</label></th><td><input type="checkbox" id="skip_zero_stock" name="skip_zero_stock" value="1" '.checked($f['skip_zero_stock']??0,1).'> <label for="skip_zero_stock">Skip items where stock_quantity &lt;= 0</label></td></tr></tbody></table>';submit_button();echo '</form></div>';}
- public function save(){if(!$this->can()||!check_admin_referer('wpfi_save_feed'))wp_die('Permission denied.');$f=$this->repo->defaults();$f['id']=sanitize_text_field($_POST['id']??'')?:wp_generate_uuid4();$f['name']=sanitize_text_field($_POST['name']??'');$f['url']=esc_url_raw($_POST['url']??'');$f['format']=in_array($_POST['format']??'xml',['xml','csv'],true)?sanitize_key($_POST['format']):='xml';$f['product_xpath']=sanitize_text_field($_POST['product_xpath']??'');$f['enabled']=isset($_POST['enabled'])?1:0;$f['skip_zero_stock']=isset($_POST['skip_zero_stock'])?1:0;$auth=$f['auth']??[];$auth['type']=sanitize_key($_POST['auth']['type']??'none');$auth['api_key']=sanitize_text_field($_POST['auth']['api_key']??'');$auth['api_key_name']=sanitize_text_field($_POST['auth']['api_key_name']??'X-API-Key');$auth['username']=sanitize_user($_POST['auth']['username']??'');$auth['password']=sanitize_text_field($_POST['auth']['password']??'');$auth['token']=sanitize_text_field($_POST['auth']['token']??'');$auth['header_name']=sanitize_text_field($_POST['auth']['header_name']??'');$auth['header_value']=sanitize_text_field($_POST['auth']['header_value']??'');if(!empty($_POST['auth']['query_params'])){$auth['query_params']=$this->parse_params(sanitize_textarea_field(wp_unslash($_POST['auth']['query_params'])));}if(!empty($_POST['auth']['path_params'])){$auth['path_params']=$this->parse_params(sanitize_textarea_field(wp_unslash($_POST['auth']['path_params'])));}$f['auth']=$auth;if(!empty($_POST['map'])){$f['map']=$this->parse_map(sanitize_textarea_field(wp_unslash($_POST['map'])));}$this->repo->save($f);$this->scheduler->schedule($f);wp_safe_redirect($this->url(['notice'=>'saved']));exit;}
- public function delete(){$id=sanitize_text_field($_GET['id']??'');if(!$this->can()||!$id||!check_admin_referer('wpfi_delete_'.$id))wp_die('Permission denied.');$this->repo->delete($id);$this->scheduler->unschedule($id);wp_safe_redirect($this->url(['notice'=>'deleted']));exit;}
- private function format_params($params){if(empty($params))return '';$lines=[];foreach((array)$params as $k=>$v)$lines[]=$k.'='.(string)$v;return implode("\n",$lines);}
- private function parse_params($raw){$raw=(string)$raw;$lines=preg_split('/\r\n|\r|\n/',$raw);$params=[];foreach($lines as $line){$line=trim($line);if($line==='')continue;$parts=explode('=',$line,2);if(count($parts)!==2)continue;$key=trim($parts[0]);$value=trim($parts[1]);if($key!=='')$params[$key]=$value;}return $params;}
- private function format_map($map){if(empty($map))return '';$lines=[];foreach((array)$map as $k=>$v)$lines[]=$k.'='.(string)$v;return implode("\n",$lines);}
- private function parse_map($raw){$raw=(string)$raw;$lines=preg_split('/\r\n|\r|\n/',$raw);$map=[];foreach($lines as $line){$line=trim($line);if($line==='')continue;$parts=explode('=',$line,2);if(count($parts)!==2)continue;$key=trim($parts[0]);$value=trim($parts[1]);if($key!=='')$map[$key]=$value;}return $map;}
+ public function __construct($r,$s,$i,$l){
+  $this->repo=$r;
+  $this->scheduler=$s;
+  $this->importer=$i;
+  $this->logger=$l;
+  add_action('admin_menu',[$this,'menu']);
+  add_action('admin_post_wpfi_save_feed',[$this,'save']);
+  add_action('admin_post_wpfi_delete_feed',[$this,'delete']);
+ }
+ public function menu(){
+  add_submenu_page('woocommerce','XML Feed Importer','XML Feed Importer','manage_woocommerce','wpfi-feeds',[$this,'page']);
+ }
+ private function can(){
+  return current_user_can('manage_woocommerce');
+ }
+ private function url($a=[]){
+  return add_query_arg(array_merge(['page'=>'wpfi-feeds'],$a),admin_url('admin.php'));
+ }
+ public function page(){
+  if(!$this->can())return;
+  $action=sanitize_key($_GET['action']??'list');
+  if($action==='edit'||$action==='new')$this->edit();
+  else $this->list();
+ }
+ private function list(){
+  echo '<div class="wrap">';
+  echo '<h1>XML Feed Importer</h1>';
+  echo '<p><a class="button button-primary" href="'.esc_url($this->url(['action'=>'new'])).'">Add Feed</a></p>';
+  echo '<table class="widefat striped"><thead><tr><th>Feed Name</th><th>URL</th><th>Status</th><th>Frequency</th><th>Actions</th></tr></thead><tbody>';
+  foreach($this->repo->all() as $f){
+   echo '<tr>';
+   echo '<td><strong>'.esc_html($f['name']??'').'</strong><br><small>'.esc_html($f['id']).'</small></td>';
+   echo '<td><code>'.esc_html(substr($f['url']??'',0,50)).'...</code></td>';
+   echo '<td>'.($f['enabled']?'<span style="color:green">✓ Enabled</span>':'<span style="color:red">✗ Disabled</span>').'</td>';
+   echo '<td>'.esc_html($f['frequency']??'').'</td>';
+   echo '<td><a href="'.esc_url($this->url(['action'=>'edit','id'=>$f['id']])).'">Edit</a> | <a href="'.esc_url(wp_nonce_url($this->url(['action'=>'delete','id'=>$f['id']]),'wpfi_delete_'.$f['id'])).'" onclick="return confirm(\'Delete this feed?\')">Delete</a></td>';
+   echo '</tr>';
+  }
+  echo '</tbody></table>';
+  echo '</div>';
+ }
+ private function edit(){
+  $id=sanitize_text_field($_GET['id']??'');
+  $f=wp_parse_args($id?$this->repo->get($id):[],$this->repo->defaults());
+  $a=$f['auth']??[];
+  echo '<div class="wrap">';
+  echo '<h1>'.($id?'Edit':'Add').' XML Feed</h1>';
+  echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
+  echo '<input type="hidden" name="action" value="wpfi_save_feed">';
+  echo '<input type="hidden" name="id" value="'.esc_attr($id).'">';
+  wp_nonce_field('wpfi_save_feed');
+  
+  echo '<h2>Feed Settings</h2>';
+  echo '<table class="form-table"><tbody>';
+  echo '<tr><th><label for="name">Feed Name</label></th><td><input type="text" id="name" name="name" value="'.esc_attr($f['name']??'').'" class="regular-text" required></td></tr>';
+  echo '<tr><th><label for="url">Base URL</label></th><td><input type="url" id="url" name="url" value="'.esc_attr($f['url']??'').'" class="regular-text" required></td></tr>';
+  echo '<tr><th><label for="format">Format</label></th><td><select id="format" name="format"><option value="xml" '.selected($f['format']??'xml','xml').'>XML</option><option value="csv" '.selected($f['format']??'','csv').'>CSV</option></select></td></tr>';
+  echo '<tr><th><label for="product_xpath">Product XPath</label></th><td><input type="text" id="product_xpath" name="product_xpath" value="'.esc_attr($f['product_xpath']??'').'" class="regular-text" placeholder="/products/product"></td></tr>';
+  echo '<tr><th><label for="frequency">Import Frequency</label></th><td><select id="frequency" name="frequency"><option value="daily" '.selected($f['frequency']??'daily','daily').'>Daily</option><option value="twicedaily" '.selected($f['frequency']??'','twicedaily').'>Twice Daily</option><option value="hourly" '.selected($f['frequency']??'','hourly').'>Hourly</option></select></td></tr>';
+  echo '<tr><th><label for="enabled">Enabled</label></th><td><input type="checkbox" id="enabled" name="enabled" value="1" '.checked($f['enabled']??1,1).'></td></tr>';
+  echo '<tr><th><label for="skip_zero_stock">Skip Zero Stock Items</label></th><td><input type="checkbox" id="skip_zero_stock" name="skip_zero_stock" value="1" '.checked($f['skip_zero_stock']??0,1).'> <span class="description">Skip products with stock_quantity &lt;= 0</span></td></tr>';
+  echo '</tbody></table>';
+  
+  echo '<h2>Authentication</h2>';
+  echo '<table class="form-table"><tbody>';
+  echo '<tr><th><label for="auth_type">Authentication Type</label></th><td>';
+  echo '<select id="auth_type" name="auth[type]">';
+  echo '<option value="none" '.selected($a['type']??'none','none').'>None</option>';
+  echo '<option value="api_key" '.selected($a['type']??'','api_key').'>API Key</option>';
+  echo '<option value="basic" '.selected($a['type']??'','basic').'>Basic Auth</option>';
+  echo '<option value="bearer" '.selected($a['type']??'','bearer').'>Bearer Token</option>';
+  echo '<option value="custom" '.selected($a['type']??'','custom').'>Custom Header</option>';
+  echo '</select>';
+  echo '</td></tr>';
+  echo '<tr><th><label for="auth_api_key">API Key</label></th><td><input type="text" id="auth_api_key" name="auth[api_key]" value="'.esc_attr($a['api_key']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_api_key_name">API Key Header</label></th><td><input type="text" id="auth_api_key_name" name="auth[api_key_name]" value="'.esc_attr($a['api_key_name']??'X-API-Key').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_username">Username</label></th><td><input type="text" id="auth_username" name="auth[username]" value="'.esc_attr($a['username']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_password">Password</label></th><td><input type="password" id="auth_password" name="auth[password]" value="'.esc_attr($a['password']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_token">Bearer Token</label></th><td><input type="text" id="auth_token" name="auth[token]" value="'.esc_attr($a['token']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_header_name">Custom Header Name</label></th><td><input type="text" id="auth_header_name" name="auth[header_name]" value="'.esc_attr($a['header_name']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_header_value">Custom Header Value</label></th><td><input type="text" id="auth_header_value" name="auth[header_value]" value="'.esc_attr($a['header_value']??'').'" class="regular-text"></td></tr>';
+  echo '<tr><th><label for="auth_query_params">Query Parameters</label></th><td>';
+  echo '<textarea id="auth_query_params" name="auth[query_params]" rows="4" class="large-text code" placeholder="key1=value1&#10;key2=value2">'.esc_textarea($this->format_params($a['query_params']??[])).'</textarea>';
+  echo '<p class="description">One key=value pair per line for query string parameters</p>';
+  echo '</td></tr>';
+  echo '<tr><th><label for="auth_path_params">Path Parameters</label></th><td>';
+  echo '<textarea id="auth_path_params" name="auth[path_params]" rows="4" class="large-text code" placeholder="id=11305&#10;uid=bf672543-bc4c-40a9-a8c6-0ac6259bb4de">'.esc_textarea($this->format_params($a['path_params']??[])).'</textarea>';
+  echo '<p class="description">One key=value pair per line. For Pinnacle feeds use:<br>id=11305<br>uid=bf672543-bc4c-40a9-a8c6-0ac6259bb4de</p>';
+  echo '</td></tr>';
+  echo '</tbody></table>';
+  
+  echo '<h2>Field Mappings</h2>';
+  echo '<table class="form-table"><tbody>';
+  echo '<tr><th><label for="map">Field Mappings</label></th><td>';
+  echo '<textarea id="map" name="map" rows="10" class="large-text code" placeholder="name=name&#10;sku=sku&#10;price=price">'.esc_textarea($this->format_map($f['map']??[])).'</textarea>';
+  echo '<p class="description">One mapping per line: WooCommerce_field=XML_selector<br>For Pinnacle use:<br>name=ProdName<br>sku=StockCode<br>description=TopCat<br>price=ProdPriceExclVAT<br>stock_quantity=ProdQty<br>image=ProdImg<br>category=category_tree</p>';
+  echo '</td></tr>';
+  echo '</tbody></table>';
+  
+  submit_button();
+  echo '</form>';
+  echo '</div>';
+ }
+ public function save(){
+  if(!$this->can() || !check_admin_referer('wpfi_save_feed')) wp_die('Permission denied.');
+
+  $f=$this->repo->defaults();
+  $f['id']=sanitize_text_field($_POST['id']??'')?:wp_generate_uuid4();
+  $f['name']=sanitize_text_field($_POST['name']??'');
+  $f['url']=esc_url_raw($_POST['url']??'');
+  
+  $format=$_POST['format']??'xml';
+  $f['format']=in_array($format,['xml','csv'],true)?sanitize_key($format):'xml';
+  
+  $f['product_xpath']=sanitize_text_field($_POST['product_xpath']??'');
+  $f['frequency']=in_array($_POST['frequency']??'daily',['daily','twicedaily','hourly'],true)?sanitize_key($_POST['frequency']):'daily';
+  $f['enabled']=isset($_POST['enabled'])?1:0;
+  $f['skip_zero_stock']=isset($_POST['skip_zero_stock'])?1:0;
+  
+  $auth=$f['auth']??[];
+  $auth['type']=sanitize_key($_POST['auth']['type']??'none');
+  $auth['api_key']=sanitize_text_field($_POST['auth']['api_key']??'');
+  $auth['api_key_name']=sanitize_text_field($_POST['auth']['api_key_name']??'X-API-Key');
+  $auth['username']=sanitize_user($_POST['auth']['username']??'');
+  $auth['password']=sanitize_text_field($_POST['auth']['password']??'');
+  $auth['token']=sanitize_text_field($_POST['auth']['token']??'');
+  $auth['header_name']=sanitize_text_field($_POST['auth']['header_name']??'');
+  $auth['header_value']=sanitize_text_field($_POST['auth']['header_value']??'');
+  
+  if(!empty($_POST['auth']['query_params'])){
+   $auth['query_params']=$this->parse_params(sanitize_textarea_field(wp_unslash($_POST['auth']['query_params'])));
+  }
+  
+  if(!empty($_POST['auth']['path_params'])){
+   $auth['path_params']=$this->parse_params(sanitize_textarea_field(wp_unslash($_POST['auth']['path_params'])));
+  }
+  
+  $f['auth']=$auth;
+  
+  if(!empty($_POST['map'])){
+   $f['map']=$this->parse_map(sanitize_textarea_field(wp_unslash($_POST['map'])));
+  }
+  
+  $this->repo->save($f);
+  $this->scheduler->schedule($f);
+  wp_safe_redirect($this->url(['notice'=>'saved']));
+  exit;
+ }
+ public function delete(){
+  $id=sanitize_text_field($_GET['id']??'');
+  if(!$this->can()||!$id||!check_admin_referer('wpfi_delete_'.$id))wp_die('Permission denied.');
+  $this->repo->delete($id);
+  $this->scheduler->unschedule($id);
+  wp_safe_redirect($this->url(['notice'=>'deleted']));
+  exit;
+ }
+ private function format_params($params){
+  if(empty($params))return '';
+  $lines=[];
+  foreach((array)$params as $k=>$v)$lines[]=$k.'='.(string)$v;
+  return implode("\n",$lines);
+ }
+ private function parse_params($raw){
+  $raw=(string)$raw;
+  $lines=preg_split('/\r\n|\r|\n/',$raw);
+  $params=[];
+  foreach($lines as $line){
+   $line=trim($line);
+   if($line==='')continue;
+   $parts=explode('=',$line,2);
+   if(count($parts)!==2)continue;
+   $key=trim($parts[0]);
+   $value=trim($parts[1]);
+   if($key!=='')$params[$key]=$value;
+  }
+  return $params;
+ }
+ private function format_map($map){
+  if(empty($map))return '';
+  $lines=[];
+  foreach((array)$map as $k=>$v)$lines[]=$k.'='.(string)$v;
+  return implode("\n",$lines);
+ }
+ private function parse_map($raw){
+  $raw=(string)$raw;
+  $lines=preg_split('/\r\n|\r|\n/',$raw);
+  $map=[];
+  foreach($lines as $line){
+   $line=trim($line);
+   if($line==='')continue;
+   $parts=explode('=',$line,2);
+   if(count($parts)!==2)continue;
+   $key=trim($parts[0]);
+   $value=trim($parts[1]);
+   if($key!=='')$map[$key]=$value;
+  }
+  return $map;
+ }
 }
